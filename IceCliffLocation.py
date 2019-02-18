@@ -36,7 +36,18 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
         minSlope = 0
         n = np.arange(minSlope,slopeLimit,(slopeLimit-minSlope)/n_iterations)
 
-    for minSlope in n:   
+    skipIteration = []
+    for minSlope in n:
+        
+        # check for existing iterations if code has previously run but crashed. 
+        if arcpy.ListFeatureClasses("*cliffMap*"):
+            fcListPrior = arcpy.ListFeatureClasses("*cliffMap*")
+            skipIteration = []
+            for prior_i in fcListPrior:
+                if int(prior_i[14:16]) == int("%02d" % (int(minSlope),)):
+                    skipIteration = 1
+        if skipIteration == 1:
+            continue
 
         ## Ice Cliff code  
 
@@ -45,8 +56,8 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
         # Parameter that probably should be 0
         minProb = 0 # probability associated with minSlope.
         
-        arcpy.CopyFeatures_management(tileDebarea, "del_debarea.shp")
-        debarea_iteration = "del_debarea.shp"
+        arcpy.CopyFeatures_management(tileDebarea, workspace+"\\del_debarea.shp")
+        debarea_iteration = workspace+"\\del_debarea.shp"
         arcpy.env.snapRaster = dem
         outExtractSlope = ExtractByMask(dem, debarea_iteration)
 
@@ -252,8 +263,11 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
                                 arcpy.DeleteFeatures_management('tempLayer')
                                 arcpy.Delete_management('tempLayer')
                                 
-                                arcpy.AddField_management("del_lineAndArea_area.shp", "value", "SHORT", 1, "", "", "", "", "")
-                                arcpy.CopyFeatures_management('del_lineAndArea_area.shp', "min"+str("%02d" % (minSlope,))+"area"+str(int(areaSlope))+"_FinalCliffShape.shp")                         
+                                if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
+                                    print "del_lineAndArea_area.shp empty, iteration stopped."
+                                else:
+                                    arcpy.AddField_management("del_lineAndArea_area.shp", "value", "SHORT", 1, "", "", "", "", "")
+                                    arcpy.CopyFeatures_management('del_lineAndArea_area.shp', "min"+str("%02d" % (minSlope,))+"area"+str(int(areaSlope))+"_FinalCliffShape.shp")                         
                                                     
                             # CDF for values between minSlope and maxSlope
                             outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE >= "+ str(minSlope))
@@ -287,22 +301,28 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
                             arcpy.env.snapRaster = dem
             
                             # extract cliff probability and apply reduction factor to area outside of buffer.shp
-                            outExtractSlope = ExtractByMask("del_cliffProbabilitySlope.TIF", "del_lineAndArea_area.shp")
-                            outExtractSlope.save("del_final_cliffs_found.TIF")
-            
-                            arcpy.RasterToFloat_conversion("del_cliffProbabilitySlope.TIF", "del_CliffProbabilitySlope.flt")
-                            CliffProbabilitySlope = Raster('del_CliffProbabilitySlope.flt')
-                            CliffProbabilitySlopeREDUCED = CliffProbabilitySlope*phi
-                            arcpy.env.snapRaster = dem
-                            CliffProbabilitySlopeREDUCED.save('del_CliffProbabilitySlopeREDUCED.TIF')
-            
-                            arcpy.MosaicToNewRaster_management("del_final_cliffs_found.TIF;del_CliffProbabilitySlopeREDUCED.TIF", workspace, "CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF", "", "32_BIT_FLOAT", "", "1", "FIRST","FIRST")
-                            arcpy.env.snapRaster = dem
+                            if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
+                                print "del_lineAndArea_area.shp is empty, did not create: CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF"
+                            else:  
+                                outExtractSlope = ExtractByMask("del_cliffProbabilitySlope.TIF", "del_lineAndArea_area.shp")
+                                outExtractSlope.save("del_final_cliffs_found.TIF")
+                                
+                                arcpy.RasterToFloat_conversion("del_cliffProbabilitySlope.TIF", "del_CliffProbabilitySlope.flt")
+                                CliffProbabilitySlope = Raster('del_CliffProbabilitySlope.flt')
+                                CliffProbabilitySlopeREDUCED = CliffProbabilitySlope*phi
+                                arcpy.env.snapRaster = dem
+                                CliffProbabilitySlopeREDUCED.save('del_CliffProbabilitySlopeREDUCED.TIF')
+                
+                                arcpy.MosaicToNewRaster_management("del_final_cliffs_found.TIF;del_CliffProbabilitySlopeREDUCED.TIF", workspace, "CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF", "", "32_BIT_FLOAT", "", "1", "FIRST","FIRST")
+                                arcpy.env.snapRaster = dem
+                                
+                                del CliffProbabilitySlope
+                                del CliffProbabilitySlopeREDUCED
                                                            
                             del minsl
                             del midsl
                             del maxsl
-                            del CliffProbabilitySlope 
+
 
                 ## ----------------------------------
                 ## Compute percent cliff in total spatial domain
@@ -444,6 +464,7 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
         ax1.set_xlabel(r'$\mathrm{\beta_i (^\circ)}$')
         ax1.set_ylabel('Ice cliff fraction (%)')
         fig.show()
+        plt.waitforbuttonpress()
         
         #save data used to make figure
         np.save(workspace+'\\figureData', (initialSlope, percentCliffs,[xfit[f],ax],[yfit[f],ay],[xfit[crit],x_crit],[yfit[crit],y_crit],xfit,yfit))

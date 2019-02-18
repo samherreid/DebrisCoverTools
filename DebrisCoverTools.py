@@ -133,9 +133,12 @@ workspace = workspace+str(demDate)+'_beta_e'+str(int(beta_e))+'_alpha'+str(int(1
 try:
     os.makedirs(workspace)
     env.workspace = workspace
+    Want_CliffProcessingSegments == 'True'
 except:
-    print "Parent workspace cannot be created. It may already exist."
-    sys.exit()
+    print "Parent workspace already exist, skipping straight to see if there are missing ice cliff iterations..."
+    print "If you changed the number of iterations, missing iterations will be incorrectly identified!"
+    Want_DebrisMap = 'False'
+    Want_CliffProcessingSegments = 'False'
 
 ##---------------------------------------------------  DebrisMap  --------------------------------------------------
 
@@ -158,43 +161,47 @@ if Want_DebrisMap == 'True':
     if Want_CloudRemoval != 'True':
         del mask_dir
         arcpy.Delete_management(workspace+'empty')
-    
+else:
+    workspace = workspace+'DebrisMap\\'   
 
 ##-----------------------------------------  CliffProcessingSegments  ------------------------------------------------
-arcpy.CalculateAreas_stats(debarea, 'debareaMeters.shp')
-rows = arcpy.SearchCursor('debareaMeters.shp')  
-for row in rows:  
-    debarea_m2 = row.getValue("F_AREA")
-del row, rows
-arcpy.Delete_management('debareaMeters.shp')
-workspaceSplit = workspace.split("\\")[-2]
-workspace = workspace[:-workspaceSplit.count('')]
-workspace = workspace+'CliffProcessingSegments\\'
-fishnetRes = L_t #name follows Herreid and Pellicciotti, 2018
-lookDistance = n_c #name follows Herreid and Pellicciotti, 2018
-try:
-    os.makedirs(workspace)
-    env.workspace = workspace
-except:
-    print "Cliff segmentation workspace cannot be created. It may already exist."
-    sys.exit()
-if debarea_m2 <= fishnetRes**2:
-    print "Debris covered area is "+str(debarea_m2)+"m2, less than fisnetRes^2: "+str(fishnetRes**2)+" m2. Cliff area will be solved for without breaking into tiles."
-    arcpy.CopyFeatures_management(debarea,"DebrisCutForCliffs0.shp")
+
+if Want_CliffProcessingSegments == 'False':
+    workspaceSplit = workspace.split("\\")[-2]
+    workspace = workspace[:-workspaceSplit.count('')]
+    workspace = workspace+'CliffProcessingSegments\\'
 else:
-    import DebrisAreaSegmentation 
-    DebrisAreaSegmentation.DebrisAreaSegmentation(debarea,fishnetRes,lookDistance,workspace)
+    arcpy.CalculateAreas_stats(debarea, 'debareaMeters.shp')
+    rows = arcpy.SearchCursor('debareaMeters.shp')  
+    for row in rows:  
+        debarea_m2 = row.getValue("F_AREA")
+    del row, rows
+    arcpy.Delete_management('debareaMeters.shp')
+    workspaceSplit = workspace.split("\\")[-2]
+    workspace = workspace[:-workspaceSplit.count('')]
+    workspace = workspace+'CliffProcessingSegments\\'
+    fishnetRes = L_t #name follows Herreid and Pellicciotti, 2018
+    lookDistance = n_c #name follows Herreid and Pellicciotti, 2018
+    try:
+        os.makedirs(workspace)
+        env.workspace = workspace
+    except:
+        print "Cliff segmentation workspace cannot be created. It may already exist."
+        sys.exit()
+    if debarea_m2 <= fishnetRes**2:
+        print "Debris covered area is "+str(debarea_m2)+"m2, less than fisnetRes^2: "+str(fishnetRes**2)+" m2. Cliff area will be solved for without breaking into tiles."
+        arcpy.CopyFeatures_management(debarea,"DebrisCutForCliffs0.shp")
+    else:
+        import DebrisAreaSegmentation 
+        DebrisAreaSegmentation.DebrisAreaSegmentation(debarea,fishnetRes,lookDistance,workspace)
     
 ##-------------------------------------------  IceCliffLocation  ----------------------------------------------------   
 workspaceSegmentation = workspace
 workspaceSplit = workspace.split("\\")[-2]
 workspace = workspace[:-workspaceSplit.count('')]
 workspace = workspace+'IceCliffs'
-try:
-    env.workspace = workspace
-except:
-    print "Cliff workspace cannot be created. It may already exist."
-    sys.exit()
+env.workspace = workspace
+
 
 tilelist = []    
 dirlist=os.listdir(workspaceSegmentation)
@@ -211,8 +218,9 @@ for tile in tilelist:
         os.makedirs(workspace)
         env.workspace = workspace
     except:
-        print "Cliff workspace cannot be created. It may already exist."
-        sys.exit()
+        print "Ice cliff workspace exists, will try to finish missing iterations..."
+        env.workspace = workspace
+        
     minSlope = []
     import IceCliffLocation
     IceCliffLocation.IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma)
