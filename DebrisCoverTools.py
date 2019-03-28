@@ -133,7 +133,7 @@ workspace = workspace+str(demDate)+'_beta_e'+str(int(beta_e))+'_alpha'+str(int(1
 try:
     os.makedirs(workspace)
     env.workspace = workspace
-    Want_CliffProcessingSegments == 'True'
+    Want_CliffProcessingSegments = 'True'
 except:
     print "Parent workspace already exist, skipping straight to see if there are missing ice cliff iterations..."
     print "If you changed the number of iterations, missing iterations will be incorrectly identified!"
