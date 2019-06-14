@@ -150,8 +150,17 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
                         arcpy.FeatureVerticesToPoints_management ("del_line.shp", "del_verti.shp", "ALL")
                         arcpy.CreateThiessenPolygons_analysis("del_verti.shp","del_voronoiCells.shp" ,"ONLY_FID") 
                         arcpy.RepairGeometry_management("del_voronoiCells.shp")
-                        arcpy.Clip_analysis("del_voronoiCells.shp", "del_extendLineBuffer.shp", "del_voronoiCellsClip.shp","") 
-                        arcpy.FeatureToLine_management("del_voronoiCellsClip.shp","del_toLine.shp", "", attributes="ATTRIBUTES")
+                        
+                        #use geodatabase here due to unexpected error: "Invalid Topology [Duplicate segment.]"
+                        arcpy.CreateFileGDB_management(workspace, "fGDB.gdb")
+                        fgdb = workspace+"\\fGDB.gdb"
+                        #arcpy.env.workspace = fgdb
+                        arcpy.Clip_analysis(workspace+"\\del_voronoiCells.shp", workspace+"\\del_extendLineBuffer.shp", fgdb+"\\shp","")
+                        arcpy.FeatureToLine_management(fgdb+"\\shp", workspace+"\\del_toLine.shp", "", attributes="ATTRIBUTES")
+                        arcpy.Delete_management(fgdb)
+                        #arcpy.env.workspace = workspace
+                        
+                        #arcpy.FeatureToLine_management("del_voronoiCellsClip.shp","del_toLine.shp", "", attributes="ATTRIBUTES")
                         arcpy.MakeFeatureLayer_management("del_toLine.shp", "tempLayer", "", "", "")
                         arcpy.SelectLayerByLocation_management("tempLayer", "CROSSED_BY_THE_OUTLINE_OF","del_minCliff_explode.shp","","NEW_SELECTION")
                         arcpy.DeleteFeatures_management("tempLayer")
@@ -464,7 +473,11 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
         ax1.set_xlabel(r'$\mathrm{\beta_i (^\circ)}$')
         ax1.set_ylabel('Ice cliff fraction (%)')
         fig.show()
-        plt.waitforbuttonpress()
+        fig.canvas.flush_events()
+        import time
+        time.sleep(1)
+        #plt.pause(0.01)
+        #plt.waitforbuttonpress()
         
         #save data used to make figure
         np.save(workspace+'\\figureData', (initialSlope, percentCliffs,[xfit[f],ax],[yfit[f],ay],[xfit[crit],x_crit],[yfit[crit],y_crit],xfit,yfit))
