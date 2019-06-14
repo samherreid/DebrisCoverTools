@@ -101,6 +101,7 @@ n_c = 1                     # Coefficient to L_t (fishnetRes) that will look for
 ## IceCliffLocation:
 ##----------------------------------------------
 
+skinny = 'False'            # If 'True' the ice cliff end extension portion of the method is skipped to speed up computation time
 pixel = 'auto'              # If 'auto': working and final resolution is set to DEM resolution. If not 'auto' define an integer spatial resolution (m) outside of quotes
 n_iterations = 36           # Number of iterations; fewer for faster computation 
 L_e = 10                    # m on ice cliff ends 
@@ -217,7 +218,7 @@ for tile in tilelist:
         sys.exit()
     minSlope = []
     import IceCliffLocation
-    IceCliffLocation.IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma)
+    IceCliffLocation.IceCliffLocation(workspace,dem,tileDebarea,pixel,skinny,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma)
     
     #define optimized minSlope
     minSlope = IceCliffLocation.IceCliffLocation.minSlope 
@@ -229,7 +230,7 @@ for tile in tilelist:
         print "Final workspace cannot be created. It may already exist."
         sys.exit()
         
-    IceCliffLocation.IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma)
+    IceCliffLocation.IceCliffLocation(workspace,dem,tileDebarea,pixel,skinny,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma)
     # remove 'final'    
     workspaceSplit = workspace.split("\\")[-1]
     workspace = workspace[:-workspaceSplit.count('')]
