@@ -151,6 +151,11 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,skinny,minSlope,n_iteration
                             # copy working .shp, used below
                             arcpy.CopyFeatures_management('del_minCliff_explode.shp', 'del_lineAndArea_area.shp')
                             arcpy.CalculateAreas_stats('del_minCliff_explode.shp', 'del_lineAndArea_area.shp')
+                            arcpy.MakeFeatureLayer_management('del_lineAndArea_area.shp', 'tempLayer')
+                            expression = 'F_AREA <=' + str((pixel**2)*A_min)
+                            arcpy.SelectLayerByAttribute_management('tempLayer', 'NEW_SELECTION', expression)
+                            arcpy.DeleteFeatures_management('tempLayer')
+                            arcpy.Delete_management('tempLayer')
 
                     if skinny == 'false':    
                         # buffer in/out area to break up attached features
