@@ -101,7 +101,7 @@ n_c = 1                     # Coefficient to L_t (fishnetRes) that will look for
 ## IceCliffLocation:
 ##----------------------------------------------
 
-skinny = 'False'            # If 'True' the ice cliff end extension portion of the method is skipped to speed up computation time
+skinny = 'false'            # If 'true' the ice cliff end extension portion of the method is skipped to speed up computation time
 pixel = 'auto'              # If 'auto': working and final resolution is set to DEM resolution. If not 'auto' define an integer spatial resolution (m) outside of quotes
 n_iterations = 36           # Number of iterations; fewer for faster computation 
 L_e = 10                    # m on ice cliff ends 
@@ -209,12 +209,11 @@ for tile in tilelist:
     tileDebarea = workspaceSegmentation+tile    
     #workspace = workspace+'\\'+tile.split(".")[0]+".gdb"
     try:
+        workspace = workspace+'\\'+tile.split(".")[0]
         os.makedirs(workspace)
-        arcpy.CreateFileGDB_management(workspace, tile.split(".")[0]+".gdb")
-        workspace = workspace+'\\'+tile.split(".")[0]+".gdb"
         env.workspace = workspace
     except:
-        print "Cliff gdb workspace cannot be created. It may already exist."
+        print "Ice cliff workspace cannot be created. It may already exist."
         sys.exit()
     minSlope = []
     import IceCliffLocation
