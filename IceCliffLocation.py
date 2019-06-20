@@ -2,7 +2,7 @@ from __future__ import division
 # function called by DebrisCoverTools.py
 # By Sam Herreid
 #
-def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma):
+def IceCliffLocation(workspace,dem,tileDebarea,pixel,skinny,minSlope,n_iterations,L_e,alpha,beta_e,A_min,phi,gamma):
     import sys
     import os
     import arcpy
@@ -50,9 +50,11 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
             continue
 
         ## Ice Cliff code  
-
-        print 'IceCliffLocation script started...'
-    
+        if skinny == 'false':
+            print 'IceCliffLocation script started...'
+        if skinny == 'true':
+            print 'skinny IceCliffLocation script started...'
+            
         # Parameter that probably should be 0
         minProb = 0 # probability associated with minSlope.
         
@@ -135,202 +137,220 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
                     del row, rows
                     arcpy.CopyFeatures_management("del_minCliff_explode.shp", "min"+str("%02d" % (minSlope,))+"_CliffArea.shp")
                     
-                    arcpy.RasterToPolygon_conversion("del_seedSlopeInt.TIF", "del_seedSlope_dissolve.shp", "NO_SIMPLIFY", "VALUE")
-
-                    # buffer in/out area to break up attached features
-                    arcpy.Buffer_analysis("del_minCliff_explode.shp", "del_extendLineBuffer.shp", (pixel/2)-0.1, "FULL", "ROUND", "NONE")
-
-                    # Generate ice cliff centerlines from Voronoi cells
-                    if arcpy.management.GetCount("del_extendLineBuffer.shp")[0] == "0":
-                        arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_dissolve.shp")
-                        print "No area within the criteria defined by seed area value "+str(seedSlope)+", iteration stopped before centerlines."
-                    else:
-                        arcpy.FeatureToLine_management("del_extendLineBuffer.shp","del_line.shp","","ATTRIBUTES")
-                        arcpy.Densify_edit("del_line.shp", "","5", "", "")
-                        arcpy.FeatureVerticesToPoints_management ("del_line.shp", "del_verti.shp", "ALL")
-                        arcpy.CreateThiessenPolygons_analysis("del_verti.shp","del_voronoiCells.shp" ,"ONLY_FID") 
-                        arcpy.RepairGeometry_management("del_voronoiCells.shp")
-                        
-                        #use geodatabase here due to unexpected error: "Invalid Topology [Duplicate segment.]"
-                        arcpy.CreateFileGDB_management(workspace, "fGDB.gdb")
-                        fgdb = workspace+"\\fGDB.gdb"
-                        #arcpy.env.workspace = fgdb
-                        arcpy.Clip_analysis(workspace+"\\del_voronoiCells.shp", workspace+"\\del_extendLineBuffer.shp", fgdb+"\\shp","")
-                        arcpy.FeatureToLine_management(fgdb+"\\shp", workspace+"\\del_toLine.shp", "", attributes="ATTRIBUTES")
-                        arcpy.Delete_management(fgdb)
-                        #arcpy.env.workspace = workspace
-                        
-                        #arcpy.FeatureToLine_management("del_voronoiCellsClip.shp","del_toLine.shp", "", attributes="ATTRIBUTES")
-                        arcpy.MakeFeatureLayer_management("del_toLine.shp", "tempLayer", "", "", "")
-                        arcpy.SelectLayerByLocation_management("tempLayer", "CROSSED_BY_THE_OUTLINE_OF","del_minCliff_explode.shp","","NEW_SELECTION")
-                        arcpy.DeleteFeatures_management("tempLayer")
-                        arcpy.Delete_management("tempLayer")
-                        arcpy.Intersect_analysis(["del_toLine.shp",'del_minCliff_explode.shp'],"del_lineIntersect.shp")
-                        arcpy.Dissolve_management("del_lineIntersect.shp", "del_toLineDis.shp", "", "", "SINGLE_PART", "DISSOLVE_LINES")
-                        arcpy.UnsplitLine_management("del_toLineDis.shp","del_unsplit.shp","Id")
-                        arcpy.MakeFeatureLayer_management("del_unsplit.shp", "tempLayer2", "", "", "")
-                        arcpy.SelectLayerByLocation_management("tempLayer2", "BOUNDARY_TOUCHES","del_minCliff_explode.shp","","NEW_SELECTION")
-                        arcpy.DeleteFeatures_management("tempLayer2")
-                        arcpy.Delete_management("tempLayer2")
-                        arcpy.cartography.SimplifyLine("del_unsplit.shp","del_clineSimpExp.shp","POINT_REMOVE",10)
-                        arcpy.AddField_management("del_clineSimpExp.shp", "value", "SHORT", 1, "", "", "", "", "")
-                        arcpy.Dissolve_management("del_clineSimpExp.shp", "del_clineSimp.shp", "value")
-                        arcpy.TrimLine_edit("del_clineSimp.shp", "8 meters", "KEEP_SHORT")
-                        arcpy.CopyFeatures_management("del_unsplit.shp", "min"+str("%02d" % (minSlope,))+"_Centerlines.shp")
-                        
-                        #refine centerline for final map
-                        if arcpy.management.GetCount("del_clineSimp.shp")[0] == "0":
-                            arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_dissolve.shp")
-                            print "No area big enough to generate a centerline, iteration skipped."
-                        else:                        
-                        
-                            # extend lines to capture cliff ends
-                            count = 0
-                            print "Extend line started..."
-                            
-                            jlist = [(pixel/2)-0.1] * int(round(L_e/(pixel/2)))
-                            for j in jlist:
-                                #create buffer out to set the limit a line will be extended to
-                                arcpy.Buffer_analysis("del_clineSimp.shp", "del_clineSimpBuff1.shp", j, "FULL", "ROUND", "ALL")
-                                arcpy.PolygonToLine_management("del_clineSimpBuff1.shp","del_clineSimpBuff1line.shp")
-                                #merge centerline and bufferline
-                                arcpy.Merge_management(["del_clineSimp.shp","del_clineSimpBuff1line.shp"], "del_clineSimpBuff1merge_dis.shp")
-                                arcpy.Delete_management("del_clineSimp.shp")
-                                print "Extend line "+str(count)+" started..."
-                                arcpy.MultipartToSinglepart_management("del_clineSimpBuff1merge_dis.shp", "del_clineSimpBuff1merge.shp")
-                                arcpy.MakeFeatureLayer_management("del_clineSimpBuff1merge.shp", "lineLayer", "", "", "")
-                                arcpy.SelectLayerByLocation_management("lineLayer", "SHARE_A_LINE_SEGMENT_WITH", "del_clineSimpBuff1.shp", "", "NEW_SELECTION", "INVERT")
-                                arcpy.ExtendLine_edit("del_clineSimpBuff1merge.shp", str(j+1)+" meters", "EXTENSION")
-                                
-                                #select share a line segment with buffer to remove buffer
-                                 
-                                arcpy.SelectLayerByLocation_management("lineLayer", "SHARE_A_LINE_SEGMENT_WITH", "del_clineSimpBuff1.shp", "", "NEW_SELECTION") 
-                                arcpy.DeleteFeatures_management("lineLayer")
-                                arcpy.Delete_management("lineLayer")
-                                arcpy.CopyFeatures_management("del_clineSimpBuff1merge.shp", "del_clineSimp.shp")
-                                arcpy.Delete_management("del_clineSimpBuff1.shp")
-                                arcpy.Delete_management("del_clineSimpBuff1line.shp")
-                                arcpy.Delete_management("del_clineSimpBuff1merge.shp")
-                                count = count + j                                
-                            del j, jlist
-    
-                            #remove last short ribs with a lenght threhold then reattach centerlines that may have been split
-                            # calculate lenght of each centerline
-                            if arcpy.management.GetCount("del_clineSimp.shp")[0] == "0":
-                                arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_explode.shp")
-                                print "Centerline shape empty, iteration skipped."
-                            else:
-                                arcpy.AddField_management("del_clineSimp.shp",'L','FLOAT')
-                                rows = arcpy.UpdateCursor("del_clineSimp.shp")
-                                for row in rows:
-                                    areacliff = row.shape.length
-                                    row.L = areacliff 
-                                    rows.updateRow(row)
-                                del row, rows
-                                arcpy.CopyFeatures_management("del_clineSimp.shp", "min"+str("%02d" % (minSlope,))+"_extendedCenterlines.shp")
-                                
-                                # buffer out centerlines to capture end area removed in earlier buffer
-                                arcpy.Buffer_analysis("del_clineSimp.shp", "del_CliffCenterlineOut.shp", ((alpha*pixel*(2**(1/2)))/2), "FULL", "ROUND", "NONE")
-        
-                                # define area with a slope less than that which defined "del_minCliff_dissolve.shp"
-                                edgeAreaSlope = areaSlope-beta_e
-                                print "Edge area defined by slope "+str(edgeAreaSlope)
-                                outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE <= "+ str(edgeAreaSlope))
-                                outSetNull.save("del_edgeSlope.TIF") 
-                               
-                                outInt = Int("del_edgeSlope.TIF")
-                                outInt.save("del_edgeSlopeInt.TIF")                    
-                                arcpy.RasterToPolygon_conversion("del_edgeSlopeInt.TIF", "del_edgeAreaSlope.shp", "NO_SIMPLIFY", "VALUE")
-                                arcpy.AddField_management("del_edgeAreaSlope.shp", "value", "SHORT", 1, "", "", "", "", "")
-                                arcpy.Dissolve_management("del_edgeAreaSlope.shp", "del_edgeAreaSlope_dissolve.shp", "value")
-                                arcpy.CopyFeatures_management("del_edgeAreaSlope_dissolve.shp", "min"+str("%02d" % (minSlope,))+"_edgeArea.shp")
-                                arcpy.Intersect_analysis (["del_edgeAreaSlope_dissolve.shp", "del_CliffCenterlineOut.shp"], "del_betaF_edgeArea.shp")
+                    # skinny/non-skinny fix for ending iteration. 0 = no skip, 1 = skip
+                    skip_iter = 0 
                     
-                                # merge buffered lines with buffered area                    
-                                arcpy.Merge_management(["del_betaF_edgeArea.shp", "del_minCliff_explode.shp"], "del_lineAndArea.shp")
-                                arcpy.AddField_management("del_lineAndArea.shp", "valueDis", "SHORT", 1, "", "", "", "", "")                    
-                                arcpy.Dissolve_management("del_lineAndArea.shp", "del_lineAndArea_dissolve1.shp", "valueDis")
-                                # fill holes and remove shapes less than one pixel to avoid error from buffer tool
-                                arcpy.MultipartToSinglepart_management("del_lineAndArea_dissolve1.shp", "del_lineAndArea_explode1.shp")
-                                arcpy.CalculateAreas_stats("del_lineAndArea_explode1.shp", 'del_lineAndArea_area1.shp')
-                                arcpy.MakeFeatureLayer_management('del_lineAndArea_area1.shp', 'tempLayer')
-                                expression = 'F_AREA <' + str(pixel**2) # m2
-                                arcpy.SelectLayerByAttribute_management('tempLayer', 'NEW_SELECTION', expression)
-                                arcpy.DeleteFeatures_management('tempLayer')
-                                arcpy.Delete_management('tempLayer')
-                                arcpy.cartography.AggregatePolygons('del_lineAndArea_area1.shp', "del_lineAndArea_dissolve.shp", 1, 0, pixel**2, 'NON_ORTHOGONAL') 
-                                                   
-                                arcpy.RepairGeometry_management("del_lineAndArea_dissolve.shp")
-                                # buffer in to reomve sliver geometries and out to make a diagonal set of single pixel shapes one feature
-                                arcpy.Buffer_analysis("del_lineAndArea_dissolve.shp", "del_lineAndArea_dissolveSmallBufferIn.shp", -0.5, "FULL", "ROUND", "ALL")
-                                arcpy.Buffer_analysis("del_lineAndArea_dissolveSmallBufferIn.shp", "del_lineAndArea_dissolveSmallBuffer.shp", 1, "FULL", "ROUND", "ALL")
-                                arcpy.MultipartToSinglepart_management("del_lineAndArea_dissolveSmallBuffer.shp", "del_lineAndArea_explode.shp")
-                                arcpy.CalculateAreas_stats('del_lineAndArea_explode.shp', 'del_lineAndArea_area.shp')
-                                arcpy.MakeFeatureLayer_management('del_lineAndArea_area.shp', 'tempLayer')
-                                expression = 'F_AREA <=' + str((pixel**2)*A_min)
-                                arcpy.SelectLayerByAttribute_management('tempLayer', 'NEW_SELECTION', expression)
-                                arcpy.DeleteFeatures_management('tempLayer')
-                                arcpy.Delete_management('tempLayer')
+                    # skinny ice cliffs, does not include ice cliff end extension to speed up computations
+                    if skinny == 'true':
+                        if arcpy.management.GetCount("del_minCliff_explode.shp")[0] == "0":
+                            skip_iter = 1
+                            print "No area within del_minCliff_explode.shp, skinny iteration skipped."
+                        else:
+                            # "_FinalCliffShape.shp" and "_cliffArea.shp" are the same if skinny == true
+                            arcpy.CopyFeatures_management("del_minCliff_explode.shp", "min"+str("%02d" % (minSlope,))+"area"+str(int(areaSlope))+"_FinalCliffShape.shp")
+                            # copy working .shp, used below
+                            arcpy.CopyFeatures_management('del_minCliff_explode.shp', 'del_lineAndArea_area.shp')
+                            arcpy.CalculateAreas_stats('del_minCliff_explode.shp', 'del_lineAndArea_area.shp')
+
+                    if skinny == 'false':    
+                        # buffer in/out area to break up attached features
+                        arcpy.Buffer_analysis("del_minCliff_explode.shp", "del_extendLineBuffer.shp", (pixel/2)-0.1, "FULL", "ROUND", "NONE")
+    
+                        # Generate ice cliff centerlines from Voronoi cells
+                        if arcpy.management.GetCount("del_extendLineBuffer.shp")[0] == "0":
+                            arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_dissolve.shp")
+                            skip_iter = 1
+                            print "No area within the criteria defined by seed area value "+str(seedSlope)+", iteration stopped before centerlines."
+                        else:
+                            arcpy.FeatureToLine_management("del_extendLineBuffer.shp","del_line.shp","","ATTRIBUTES")
+                            arcpy.Densify_edit("del_line.shp", "","5", "", "")
+                            arcpy.FeatureVerticesToPoints_management ("del_line.shp", "del_verti.shp", "ALL")
+                            arcpy.CreateThiessenPolygons_analysis("del_verti.shp","del_voronoiCells.shp" ,"ONLY_FID") 
+                            arcpy.RepairGeometry_management("del_voronoiCells.shp")
+                            
+                            #use geodatabase here due to unexpected error: "Invalid Topology [Duplicate segment.]"
+                            arcpy.CreateFileGDB_management(workspace, "fGDB.gdb")
+                            fgdb = workspace+"\\fGDB.gdb"
+                            #arcpy.env.workspace = fgdb
+                            arcpy.Clip_analysis(workspace+"\\del_voronoiCells.shp", workspace+"\\del_extendLineBuffer.shp", fgdb+"\\shp","")
+                            arcpy.FeatureToLine_management(fgdb+"\\shp", workspace+"\\del_toLine.shp", "", attributes="ATTRIBUTES")
+                            arcpy.Delete_management(fgdb)
+                            #arcpy.env.workspace = workspace
+                            
+                            #arcpy.FeatureToLine_management("del_voronoiCellsClip.shp","del_toLine.shp", "", attributes="ATTRIBUTES")
+                            arcpy.MakeFeatureLayer_management("del_toLine.shp", "tempLayer", "", "", "")
+                            arcpy.SelectLayerByLocation_management("tempLayer", "CROSSED_BY_THE_OUTLINE_OF","del_minCliff_explode.shp","","NEW_SELECTION")
+                            arcpy.DeleteFeatures_management("tempLayer")
+                            arcpy.Delete_management("tempLayer")
+                            arcpy.Intersect_analysis(["del_toLine.shp",'del_minCliff_explode.shp'],"del_lineIntersect.shp")
+                            arcpy.Dissolve_management("del_lineIntersect.shp", "del_toLineDis.shp", "", "", "SINGLE_PART", "DISSOLVE_LINES")
+                            arcpy.UnsplitLine_management("del_toLineDis.shp","del_unsplit.shp","Id")
+                            arcpy.MakeFeatureLayer_management("del_unsplit.shp", "tempLayer2", "", "", "")
+                            arcpy.SelectLayerByLocation_management("tempLayer2", "BOUNDARY_TOUCHES","del_minCliff_explode.shp","","NEW_SELECTION")
+                            arcpy.DeleteFeatures_management("tempLayer2")
+                            arcpy.Delete_management("tempLayer2")
+                            arcpy.cartography.SimplifyLine("del_unsplit.shp","del_clineSimpExp.shp","POINT_REMOVE",10)
+                            arcpy.AddField_management("del_clineSimpExp.shp", "value", "SHORT", 1, "", "", "", "", "")
+                            arcpy.Dissolve_management("del_clineSimpExp.shp", "del_clineSimp.shp", "value")
+                            arcpy.TrimLine_edit("del_clineSimp.shp", "8 meters", "KEEP_SHORT")
+                            arcpy.CopyFeatures_management("del_unsplit.shp", "min"+str("%02d" % (minSlope,))+"_Centerlines.shp")
+                            
+                            #refine centerline for final map
+                            if arcpy.management.GetCount("del_clineSimp.shp")[0] == "0":
+                                arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_dissolve.shp")
+                                skip_iter = 1
+                                print "No area big enough to generate a centerline, iteration skipped."
+                            else:                        
+                            
+                                # extend lines to capture cliff ends
+                                count = 0
+                                print "Extend line started..."
                                 
-                                if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
-                                    print "del_lineAndArea_area.shp empty, iteration stopped."
-                                else:
-                                    arcpy.AddField_management("del_lineAndArea_area.shp", "value", "SHORT", 1, "", "", "", "", "")
-                                    arcpy.CopyFeatures_management('del_lineAndArea_area.shp', "min"+str("%02d" % (minSlope,))+"area"+str(int(areaSlope))+"_FinalCliffShape.shp")                         
-                                                    
-                            # CDF for values between minSlope and maxSlope
-                            outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE >= "+ str(minSlope))
-                            outSetNull.save("del_min.TIF")
-                            arcpy.RasterToFloat_conversion("del_min.TIF", "del_min.flt")
-                            minsl = Raster('del_min.flt')
-                            slopemin = minsl*0.0
-                            slopemin.save('del_minSl.TIF')            
-                                
-                            outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE > "+ str(seedSlope))
-                            outSetNull = SetNull(outSetNull, outSetNull, "VALUE < "+ str(minSlope))
-                            outSetNull.save("del_mid.TIF")
-                            arcpy.RasterToFloat_conversion("del_mid.TIF", "del_mid.flt")
-                            midsl = Raster('del_mid.flt')
-                            b = (1-(((1-minProb)/(seedSlope-minSlope))*seedSlope))
-                            slopemid = (((1-minProb)/(seedSlope-minSlope))*midsl)+b
-                            arcpy.env.snapRaster = dem
-                            slopemid.save('del_midSl.TIF')
-                            arcpy.env.snapRaster = dem
-            
-                            outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE <= "+ str(seedSlope))
-                            outSetNull.save("del_max.TIF")
-                            arcpy.RasterToFloat_conversion("del_max.TIF", "del_max.flt")
-                            maxsl = Raster('del_max.flt')
-                            slopemax = maxsl*0.0+1.0
-                            arcpy.env.snapRaster = dem
-                            slopemax.save('del_maxSl.TIF')
-                            arcpy.env.snapRaster = dem
+                                jlist = [(pixel/2)-0.1] * int(round(L_e/(pixel/2)))
+                                for j in jlist:
+                                    #create buffer out to set the limit a line will be extended to
+                                    arcpy.Buffer_analysis("del_clineSimp.shp", "del_clineSimpBuff1.shp", j, "FULL", "ROUND", "ALL")
+                                    arcpy.PolygonToLine_management("del_clineSimpBuff1.shp","del_clineSimpBuff1line.shp")
+                                    #merge centerline and bufferline
+                                    arcpy.Merge_management(["del_clineSimp.shp","del_clineSimpBuff1line.shp"], "del_clineSimpBuff1merge_dis.shp")
+                                    arcpy.Delete_management("del_clineSimp.shp")
+                                    print "Extend line "+str(count)+" started..."
+                                    arcpy.MultipartToSinglepart_management("del_clineSimpBuff1merge_dis.shp", "del_clineSimpBuff1merge.shp")
+                                    arcpy.MakeFeatureLayer_management("del_clineSimpBuff1merge.shp", "lineLayer", "", "", "")
+                                    arcpy.SelectLayerByLocation_management("lineLayer", "SHARE_A_LINE_SEGMENT_WITH", "del_clineSimpBuff1.shp", "", "NEW_SELECTION", "INVERT")
+                                    arcpy.ExtendLine_edit("del_clineSimpBuff1merge.shp", str(j+1)+" meters", "EXTENSION")
                                     
-                            arcpy.MosaicToNewRaster_management("del_minSl.TIF;del_midSl.TIF;del_maxSl.TIF", workspace, "del_cliffProbabilitySlope.TIF", "", "32_BIT_FLOAT", "", "1", "LAST","FIRST")
-                            arcpy.env.snapRaster = dem
+                                    #select share a line segment with buffer to remove buffer
+                                     
+                                    arcpy.SelectLayerByLocation_management("lineLayer", "SHARE_A_LINE_SEGMENT_WITH", "del_clineSimpBuff1.shp", "", "NEW_SELECTION") 
+                                    arcpy.DeleteFeatures_management("lineLayer")
+                                    arcpy.Delete_management("lineLayer")
+                                    arcpy.CopyFeatures_management("del_clineSimpBuff1merge.shp", "del_clineSimp.shp")
+                                    arcpy.Delete_management("del_clineSimpBuff1.shp")
+                                    arcpy.Delete_management("del_clineSimpBuff1line.shp")
+                                    arcpy.Delete_management("del_clineSimpBuff1merge.shp")
+                                    count = count + j                                
+                                del j, jlist
+        
+                                #remove last short ribs with a lenght threhold then reattach centerlines that may have been split
+                                # calculate lenght of each centerline
+                                if arcpy.management.GetCount("del_clineSimp.shp")[0] == "0":
+                                    arcpy.CreateFeatureclass_management(workspace, 'del_lineAndArea_area.shp', "POLYGON","del_minCliff_explode.shp")
+                                    skip_iter = 1
+                                    print "Centerline shape empty, iteration skipped."
+                                else:
+                                    arcpy.AddField_management("del_clineSimp.shp",'L','FLOAT')
+                                    rows = arcpy.UpdateCursor("del_clineSimp.shp")
+                                    for row in rows:
+                                        areacliff = row.shape.length
+                                        row.L = areacliff 
+                                        rows.updateRow(row)
+                                    del row, rows
+                                    arcpy.CopyFeatures_management("del_clineSimp.shp", "min"+str("%02d" % (minSlope,))+"_extendedCenterlines.shp")
+                                    
+                                    # buffer out centerlines to capture end area removed in earlier buffer
+                                    arcpy.Buffer_analysis("del_clineSimp.shp", "del_CliffCenterlineOut.shp", ((alpha*pixel*(2**(1/2)))/2), "FULL", "ROUND", "NONE")
             
-                            # extract cliff probability and apply reduction factor to area outside of buffer.shp
-                            if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
-                                print "del_lineAndArea_area.shp is empty, did not create: CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF"
-                            else:  
-                                outExtractSlope = ExtractByMask("del_cliffProbabilitySlope.TIF", "del_lineAndArea_area.shp")
-                                outExtractSlope.save("del_final_cliffs_found.TIF")
+                                    # define area with a slope less than that which defined "del_minCliff_dissolve.shp"
+                                    edgeAreaSlope = areaSlope-beta_e
+                                    print "Edge area defined by slope "+str(edgeAreaSlope)
+                                    outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE <= "+ str(edgeAreaSlope))
+                                    outSetNull.save("del_edgeSlope.TIF") 
+                                   
+                                    outInt = Int("del_edgeSlope.TIF")
+                                    outInt.save("del_edgeSlopeInt.TIF")                    
+                                    arcpy.RasterToPolygon_conversion("del_edgeSlopeInt.TIF", "del_edgeAreaSlope.shp", "NO_SIMPLIFY", "VALUE")
+                                    arcpy.AddField_management("del_edgeAreaSlope.shp", "value", "SHORT", 1, "", "", "", "", "")
+                                    arcpy.Dissolve_management("del_edgeAreaSlope.shp", "del_edgeAreaSlope_dissolve.shp", "value")
+                                    arcpy.CopyFeatures_management("del_edgeAreaSlope_dissolve.shp", "min"+str("%02d" % (minSlope,))+"_edgeArea.shp")
+                                    arcpy.Intersect_analysis (["del_edgeAreaSlope_dissolve.shp", "del_CliffCenterlineOut.shp"], "del_betaF_edgeArea.shp")
+                        
+                                    # merge buffered lines with buffered area                    
+                                    arcpy.Merge_management(["del_betaF_edgeArea.shp", "del_minCliff_explode.shp"], "del_lineAndArea.shp")
+                                    arcpy.AddField_management("del_lineAndArea.shp", "valueDis", "SHORT", 1, "", "", "", "", "")                    
+                                    arcpy.Dissolve_management("del_lineAndArea.shp", "del_lineAndArea_dissolve1.shp", "valueDis")
+                                    # fill holes and remove shapes less than one pixel to avoid error from buffer tool
+                                    arcpy.MultipartToSinglepart_management("del_lineAndArea_dissolve1.shp", "del_lineAndArea_explode1.shp")
+                                    arcpy.CalculateAreas_stats("del_lineAndArea_explode1.shp", 'del_lineAndArea_area1.shp')
+                                    arcpy.MakeFeatureLayer_management('del_lineAndArea_area1.shp', 'tempLayer')
+                                    expression = 'F_AREA <' + str(pixel**2) # m2
+                                    arcpy.SelectLayerByAttribute_management('tempLayer', 'NEW_SELECTION', expression)
+                                    arcpy.DeleteFeatures_management('tempLayer')
+                                    arcpy.Delete_management('tempLayer')
+                                    arcpy.cartography.AggregatePolygons('del_lineAndArea_area1.shp', "del_lineAndArea_dissolve.shp", 1, 0, pixel**2, 'NON_ORTHOGONAL') 
+                                                       
+                                    arcpy.RepairGeometry_management("del_lineAndArea_dissolve.shp")
+                                    # buffer in to reomve sliver geometries and out to make a diagonal set of single pixel shapes one feature
+                                    arcpy.Buffer_analysis("del_lineAndArea_dissolve.shp", "del_lineAndArea_dissolveSmallBufferIn.shp", -0.5, "FULL", "ROUND", "ALL")
+                                    arcpy.Buffer_analysis("del_lineAndArea_dissolveSmallBufferIn.shp", "del_lineAndArea_dissolveSmallBuffer.shp", 1, "FULL", "ROUND", "ALL")
+                                    arcpy.MultipartToSinglepart_management("del_lineAndArea_dissolveSmallBuffer.shp", "del_lineAndArea_explode.shp")
+                                    arcpy.CalculateAreas_stats('del_lineAndArea_explode.shp', 'del_lineAndArea_area.shp')
+                                    arcpy.MakeFeatureLayer_management('del_lineAndArea_area.shp', 'tempLayer')
+                                    expression = 'F_AREA <=' + str((pixel**2)*A_min)
+                                    arcpy.SelectLayerByAttribute_management('tempLayer', 'NEW_SELECTION', expression)
+                                    arcpy.DeleteFeatures_management('tempLayer')
+                                    arcpy.Delete_management('tempLayer')
+                                    
+                                    if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
+                                        print "del_lineAndArea_area.shp empty, iteration stopped."
+                                        skip_iter = 1
+                                    else:
+                                        arcpy.AddField_management("del_lineAndArea_area.shp", "value", "SHORT", 1, "", "", "", "", "")
+                                        arcpy.CopyFeatures_management('del_lineAndArea_area.shp', "min"+str("%02d" % (minSlope,))+"area"+str(int(areaSlope))+"_FinalCliffShape.shp")                         
+                    if skip_iter == 0:
+                        # CDF for values between minSlope and maxSlope
+                        outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE >= "+ str(minSlope))
+                        outSetNull.save("del_min.TIF")
+                        arcpy.RasterToFloat_conversion("del_min.TIF", "del_min.flt")
+                        minsl = Raster('del_min.flt')
+                        slopemin = minsl*0.0
+                        slopemin.save('del_minSl.TIF')            
+                            
+                        outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE > "+ str(seedSlope))
+                        outSetNull = SetNull(outSetNull, outSetNull, "VALUE < "+ str(minSlope))
+                        outSetNull.save("del_mid.TIF")
+                        arcpy.RasterToFloat_conversion("del_mid.TIF", "del_mid.flt")
+                        midsl = Raster('del_mid.flt')
+                        b = (1-(((1-minProb)/(seedSlope-minSlope))*seedSlope))
+                        slopemid = (((1-minProb)/(seedSlope-minSlope))*midsl)+b
+                        arcpy.env.snapRaster = dem
+                        slopemid.save('del_midSl.TIF')
+                        arcpy.env.snapRaster = dem
+        
+                        outSetNull = SetNull("del_slope.TIF", "del_slope.TIF", "VALUE <= "+ str(seedSlope))
+                        outSetNull.save("del_max.TIF")
+                        arcpy.RasterToFloat_conversion("del_max.TIF", "del_max.flt")
+                        maxsl = Raster('del_max.flt')
+                        slopemax = maxsl*0.0+1.0
+                        arcpy.env.snapRaster = dem
+                        slopemax.save('del_maxSl.TIF')
+                        arcpy.env.snapRaster = dem
                                 
-                                arcpy.RasterToFloat_conversion("del_cliffProbabilitySlope.TIF", "del_CliffProbabilitySlope.flt")
-                                CliffProbabilitySlope = Raster('del_CliffProbabilitySlope.flt')
-                                CliffProbabilitySlopeREDUCED = CliffProbabilitySlope*phi
-                                arcpy.env.snapRaster = dem
-                                CliffProbabilitySlopeREDUCED.save('del_CliffProbabilitySlopeREDUCED.TIF')
-                
-                                arcpy.MosaicToNewRaster_management("del_final_cliffs_found.TIF;del_CliffProbabilitySlopeREDUCED.TIF", workspace, "CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF", "", "32_BIT_FLOAT", "", "1", "FIRST","FIRST")
-                                arcpy.env.snapRaster = dem
-                                
-                                del CliffProbabilitySlope
-                                del CliffProbabilitySlopeREDUCED
-                                                           
-                            del minsl
-                            del midsl
-                            del maxsl
+                        arcpy.MosaicToNewRaster_management("del_minSl.TIF;del_midSl.TIF;del_maxSl.TIF", workspace, "del_cliffProbabilitySlope.TIF", "", "32_BIT_FLOAT", "", "1", "LAST","FIRST")
+                        arcpy.env.snapRaster = dem
+        
+                        # extract cliff probability and apply reduction factor to area outside of buffer.shp
+                        if arcpy.management.GetCount("del_lineAndArea_area.shp")[0] == "0":
+                            print "del_lineAndArea_area.shp is empty, did not create: CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF"
+                        else:  
+                            outExtractSlope = ExtractByMask("del_cliffProbabilitySlope.TIF", "del_lineAndArea_area.shp")
+                            outExtractSlope.save("del_final_cliffs_found.TIF")
+                            
+                            arcpy.RasterToFloat_conversion("del_cliffProbabilitySlope.TIF", "del_CliffProbabilitySlope.flt")
+                            CliffProbabilitySlope = Raster('del_CliffProbabilitySlope.flt')
+                            CliffProbabilitySlopeREDUCED = CliffProbabilitySlope*phi
+                            arcpy.env.snapRaster = dem
+                            CliffProbabilitySlopeREDUCED.save('del_CliffProbabilitySlopeREDUCED.TIF')
+            
+                            arcpy.MosaicToNewRaster_management("del_final_cliffs_found.TIF;del_CliffProbabilitySlopeREDUCED.TIF", workspace, "CliffProbability_betai" + str("%02d" % (int(minSlope),)) + "betaA"  + str(int(areaSlope))+".TIF", "", "32_BIT_FLOAT", "", "1", "FIRST","FIRST")
+                            arcpy.env.snapRaster = dem
+                            
+                            del CliffProbabilitySlope
+                            del CliffProbabilitySlopeREDUCED
+                                                       
+                        del minsl
+                        del midsl
+                        del maxsl
 
 
                 ## ----------------------------------
@@ -473,7 +493,7 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,minSlope,n_iterations,L_e,a
         ax1.set_xlabel(r'$\mathrm{\beta_i (^\circ)}$')
         ax1.set_ylabel('Ice cliff fraction (%)')
         fig.show()
-        fig.canvas.flush_events()
+        #fig.canvas.flush_events()
         import time
         time.sleep(1)
         #plt.pause(0.01)
