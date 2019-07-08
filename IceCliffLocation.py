@@ -274,6 +274,7 @@ def IceCliffLocation(workspace,dem,tileDebarea,pixel,skinny,minSlope,n_iteration
                                     arcpy.Merge_management(["del_betaF_edgeArea.shp", "del_minCliff_explode.shp"], "del_lineAndArea.shp")
                                     arcpy.AddField_management("del_lineAndArea.shp", "valueDis", "SHORT", 1, "", "", "", "", "")                    
                                     arcpy.Dissolve_management("del_lineAndArea.shp", "del_lineAndArea_dissolve1.shp", "valueDis")
+                                    arcpy.RepairGeometry_management("del_lineAndArea_dissolve1.shp")
                                     # fill holes and remove shapes less than one pixel to avoid error from buffer tool
                                     arcpy.MultipartToSinglepart_management("del_lineAndArea_dissolve1.shp", "del_lineAndArea_explode1.shp")
                                     arcpy.CalculateAreas_stats("del_lineAndArea_explode1.shp", 'del_lineAndArea_area1.shp')
